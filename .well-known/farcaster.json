@@ -1,1 +1,7 @@
-{ "name": "Airdrop Tetris", "description": "Mini app del airdrop de Base, tema Coinbase blue.", "url": "https://airdrop-tetris-miniapp.vercel.app", "accountAssociation": {}, "version": "1.0" }
+{ 
+"name": "Airdrop Tetris", 
+"description": "Mini app del airdrop de Base, tema Coinbase blue.", 
+"url": "https://airdrop-tetris-miniapp.vercel.app", 
+"accountAssociation": {}, 
+"version": "1.0" 
+}
