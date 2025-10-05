@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Airdrop Tetris — Mini App (Prototype)</title>
+  <style>
+    :root{
+      --coinbase-blue:#0052FF;
+      --bg:#0F1724;
+      --panel:#0b1220;
+      --accent:#6A8BFF;
+      --text:#e6eefc;
+    }
+    body{margin:0;font-family:Inter,system-ui,Arial; color:var(--text); background:linear-gradient(180deg,#02122b 0%, #05112b 60%); display:flex; flex-direction:column; align-items:center; padding:24px;}
+    header{width:100%; max-width:980px; display:flex; align-items:center; gap:16px; margin-bottom:16px;}
+    .logo{width:64px;height:64px;border-radius:12px; background:var(--coinbase-blue); display:flex;align-items:center;justify-content:center;font-weight:700;font-size:28px;color:white;}
+    h1{margin:0;font-size:20px;}
+    p.lead{color:#cfe0ff; margin:6px 0 16px;}
+    .app {display:flex; gap:20px; width:100%; max-width:980px;}
+    .left {background:rgba(255,255,255,0.02); padding:12px; border-radius:12px; display:flex; flex-direction:column; align-items:center;}
+    canvas{background:#071226; border-radius:6px; display:block; box-shadow:0 8px 30px rgba(2,10,30,0.6);}
+    .controls {margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;}
+    button, .btn {background:var(--coinbase-blue); color:white; border:0; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600;}
+    .muted {background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--text);}
+    .info {padding:12px; width:320px; background:rgba(255,255,255,0.02); border-radius:8px;}
+    .score {font-size:20px; font-weight:700; color:var(--accent);}
+    footer {margin-top:20px;color:rgba(255,255,255,0.35); font-size:13px;}
+    .coins {position:relative; width:300px; height:0; pointer-events:none;}
+    .coin-fall {position:absolute; font-size:22px; transform:translateY(-20px); animation:drop 1.2s linear forwards;}
+    @keyframes drop {to {transform: translateY(220px) rotate(360deg); opacity:0;}}
+    .hint {font-size:13px; color:#b7cfff;}
+    .small {font-size:12px; color:#bcd0ff;}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">₿</div>
+    <div>
+      <h1>Airdrop Tetris — Mini App (prototype)</h1>
+      <p class="lead">Rápido y sencillo: juega, conecta MetaMask (Base) y comparte tu puntuación en Warpcast / Farcaster.</p>
+    </div>
+  </header>
+
+  <main class="app">
+    <div class="left">
+      <canvas id="board" width="300" height="600"></canvas>
+      <div class="coins" id="coins"></div>
+      <div class="controls">
+        <button id="startBtn" class="btn">Start</button>
+        <button id="pauseBtn" class="muted">Pause</button>
+        <button id="resetBtn" class="muted">Reset</button>
+        <button id="connectBtn" class="btn">Connect Wallet</button>
+        <button id="shareBtn" class="muted">Share (Warpcast)</button>
+      </div>
+      <div class="small hint" style="margin-top:8px;">Controles: ← → mover, ↑ rotar, ↓ bajar, Espacio: drop</div>
+    </div>
+
+    <aside class="info">
+      <div><strong>Estado wallet:</strong> <span id="walletStatus">No conectada</span></div>
+      <div style="margin-top:10px;"><strong>Network:</strong> <span id="network">-</span></div>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.03);margin:10px 0;">
+      <div>Score: <span class="score" id="score">0</span></div>
+      <div>Líneas: <span id="lines">0</span></div>
+      <div>Nivel: <span id="level">1</span></div>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.03);margin:10px 0;">
+      <div class="small">Tema: Airdrop de Base — colores Coinbase blue.</div>
+      <div style="margin-top:8px;">
+        <button id="installFrame" class="btn">Agregar como Mini App (Farcaster)</button>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <div>Prototipo rápido — cuando quieras añadimos recompensas on‑chain (TOSHI) más adelante.</div>
+  </footer>
+
+<script>
+/* --------- TETRIS: minimal implementation --------- */
+const COLS = 10, ROWS = 20, BLOCK = 30;
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const linesEl = document.getElementById('lines');
+const levelEl = document.getElementById('level');
+const coinsWrap = document.getElementById('coins');
+
+let grid = [];
+let current = null;
+let dropInterval = 650;
+let dropTimer = null;
+let score = 0, lines = 0, level = 1;
+let playing = false;
+
+const COLORS = ['#0052FF','#6A8BFF','#00D180','#FFC801','#FF7900','#AFC2C0','#F2F2F2'];
+
+const SHAPES = {
+  I: [[1,1,1,1]],
+  O: [[1,1],[1,1]],
+  T: [[0,1,0],[1,1,1]],
+  S: [[0,1,1],[1,1,0]],
+  Z: [[1,1,0],[0,1,1]],
+  J: [[1,0,0],[1,1,1]],
+  L: [[0,0,1],[1,1,1]]
+};
+
+function makeGrid(){ grid = []; for(let r=0;r<ROWS;r++){ grid.push(new Array(COLS).fill(0)); } }
+function randomShape(){ const keys=Object.keys(SHAPES); const k = keys[Math.floor(Math.random()*keys.length)]; return { shape:SHAPES[k].map(row=>row.slice()), x:Math.floor(COLS/2)-1, y:0, color: COLORS[Math.floor(Math.random()*COLORS.length)] }; }
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // draw grid filled blocks
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      if(grid[r][c]){
+        ctx.fillStyle = grid[r][c];
+        ctx.fillRect(c*BLOCK, r*BLOCK, BLOCK-1, BLOCK-1);
+      } else {
+        ctx.fillStyle = '#041526';
+        ctx.fillRect(c*BLOCK, r*BLOCK, BLOCK-1, BLOCK-1);
+      }
+    }
+  }
+  // draw current piece
+  if(current){
+    for(let r=0;r<current.shape.length;r++){
+      for(let c=0;c<current.shape[r].length;c++){
+        if(current.shape[r][c]){
+          ctx.fillStyle = current.color;
+          ctx.fillRect((current.x+c)*BLOCK, (current.y+r)*BLOCK, BLOCK-1, BLOCK-1);
+        }
+      }
+    }
+  }
+}
+
+function collides(shape, x, y){
+  for(let r=0;r<shape.length;r++){
+    for(let c=0;c<shape[r].length;c++){
+      if(shape[r][c]){
+        let gx = x+c, gy = y+r;
+        if(gx<0 || gx>=COLS || gy>=ROWS) return true;
+        if(gy>=0 && grid[gy][gx]) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function rotate(shape){
+  const S = shape;
+  const rows = S.length, cols = S[0].length;
+  const out = Array.from({length:cols}, ()=> Array(rows).fill(0));
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) out[c][rows-1-r] = S[r][c];
+  return out;
+}
+
+function lockPiece(){
+  for(let r=0;r<current.shape.length;r++){
+    for(let c=0;c<current.shape[r].length;c++){
+      if(current.shape[r][c]){
+        let gx = current.x + c, gy = current.y + r;
+        if(gy>=0) grid[gy][gx] = current.color;
+      }
+    }
+  }
+  clearLines();
+  spawn();
+}
+
+function clearLines(){
+  let cleared = 0;
+  for(let r=ROWS-1;r>=0;r--){
+    if(grid[r].every(v => v)){
+      grid.splice(r,1);
+      grid.unshift(new Array(COLS).fill(0));
+      cleared++;
+      r++; // re-check same row index after shift
+    }
+  }
+  if(cleared>0){
+    lines += cleared;
+    score += cleared * 100 * level;
+    // level up every 10 lines
+    level = 1 + Math.floor(lines/10);
+    dropInterval = Math.max(120, 650 - (level-1)*50);
+    // coin animation
+    spawnCoins(cleared);
+    updateHUD();
+  }
+}
+
+function spawnCoins(n){
+  for(let i=0;i<n*6;i++){
+    const el = document.createElement('div');
+    el.className='coin-fall';
+    el.style.left = (30 + Math.random()*240)+'px';
+    el.style.top = '-10px';
+    el.textContent = '🪙';
+    coinsWrap.appendChild(el);
+    setTimeout(()=> el.remove(), 1400);
+  }
+}
+
+function spawn(){
+  current = randomShape();
+  if(collides(current.shape, current.x, current.y)){
+    // game over
+    playing = false;
+    clearInterval(dropTimer);
+    alert('Game over — puntuación: ' + score);
+  }
+}
+
+function updateHUD(){
+  scoreEl.textContent = score;
+  linesEl.textContent = lines;
+  levelEl.textContent = level;
+}
+
+function tick(){
+  if(!playing) return;
+  if(!current) spawn();
+  if(!collides(current.shape, current.x, current.y+1)){
+    current.y++;
+  } else {
+    lockPiece();
+  }
+  draw();
+}
+
+document.getElementById('startBtn').addEventListener('click', ()=> {
+  if(!playing){
+    makeGrid();
+    score=0; lines=0; level=1;
+    updateHUD();
+    spawn();
+    draw();
+    playing = true;
+    dropTimer = setInterval(tick, dropInterval);
+  }
+});
+document.getElementById('pauseBtn').addEventListener('click', ()=> {
+  playing = !playing;
+  if(playing) { dropTimer = setInterval(tick, dropInterval); }
+  else { clearInterval(dropTimer); }
+});
+document.getElementById('resetBtn').addEventListener('click', ()=> {
+  clearInterval(dropTimer);
+  makeGrid(); draw(); score=0; lines=0; level=1; updateHUD(); playing=false;
+  coinsWrap.innerHTML='';
+});
+
+window.addEventListener('keydown', (e)=>{
+  if(!current || !playing) return;
+  if(e.key === 'ArrowLeft'){ if(!collides(current.shape, current.x-1, current.y)) current.x--; }
+  if(e.key === 'ArrowRight'){ if(!collides(current.shape, current.x+1, current.y)) current.x++; }
+  if(e.key === 'ArrowDown'){ if(!collides(current.shape, current.x, current.y+1)) current.y++; }
+  if(e.key === ' '){ // hard drop
+    while(!collides(current.shape, current.x, current.y+1)) current.y++;
+    lockPiece();
+  }
+  if(e.key === 'ArrowUp'){ const r = rotate(current.shape); if(!collides(r, current.x, current.y)) current.shape = r; }
+  draw();
+});
+
+/* --------- WALLET (MetaMask / Base network helpers) --------- */
+const connectBtn = document.getElementById('connectBtn');
+const walletStatus = document.getElementById('walletStatus');
+const networkEl = document.getElementById('network');
+
+async function connectWallet(){
+  if(!window.ethereum){ alert('MetaMask no detectado. Instálalo y prueba otra vez.'); return; }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    walletStatus.textContent = accounts[0];
+    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    networkEl.textContent = chainId;
+    // if not Base mainnet (0x2105), offer to switch/add
+    if(chainId !== '0x2105'){
+      if(confirm('Tu wallet no está en Base mainnet. ¿Quieres añadir/cambiar a Base?')){
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: '0x2105',
+              chainName: 'Base Mainnet',
+              nativeCurrency: { name:'Ether', symbol:'ETH', decimals:18 },
+              rpcUrls: ['https://mainnet.base.org'],
+              blockExplorerUrls: ['https://basescan.org']
+            }]
+          });
+          networkEl.textContent = await window.ethereum.request({ method: 'eth_chainId' });
+        } catch(addErr){ console.error(addErr); alert('No se pudo añadir/cambiar la red.'); }
+      }
+    }
+  } catch(err){
+    console.error(err); walletStatus.textContent = 'error';
+  }
+}
+connectBtn.addEventListener('click', connectWallet);
+
+/* --------- Share to Warpcast simple (prefill compose) --------- */
+document.getElementById('shareBtn').addEventListener('click', ()=> {
+  const text = encodeURIComponent(`He sacado ${score} puntos en Airdrop Tetris (mini app)! #AirdropTetris #Base`);
+  // warpcast compose link (opens a composer with prefilled text)
+  const url = 'https://warpcast.com/~/compose?text=' + text;
+  window.open(url, '_blank');
+});
+
+/* --------- Add to Farcaster mini apps: open manifest tool (helper) --------- */
+document.getElementById('installFrame').addEventListener('click', ()=> {
+  // open Farcaster developers manifest tool to claim domain, user will follow steps
+  window.open('https://farcaster.xyz/~/developers/mini-apps/manifest', '_blank');
+});
+
+/* initial draw */
+makeGrid();
+draw();
+
+</script>
+</body>
+</html>
