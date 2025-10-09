@@ -312,8 +312,21 @@ async function connectWallet(){
         } catch(addErr){ console.error(addErr); alert('No se pudo añadir/cambiar la red.'); }
       }
     }
+connectBtn.addEventListener('click', connectWallet);    
   } catch(err){
     console.error(err); walletStatus.textContent = 'error';
+  }
+}
+// ✅ Actualizar estado de wallet al conectar
+async function connectWallet() {
+  try {
+    const fc = await window.frames.init();
+    const account = await fc.wallet.connect();
+    const shortAddr = account.address.slice(0, 6) + '...' + account.address.slice(-4);
+    document.getElementById("walletStatus").textContent = `✅ Conectada: ${shortAddr}`;
+  } catch (err) {
+    console.error(err);
+    document.getElementById("walletStatus").textContent = "❌ Error al conectar la wallet";
   }
 }
 connectBtn.addEventListener('click', connectWallet);
