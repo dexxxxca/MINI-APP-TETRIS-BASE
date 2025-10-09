@@ -2,8 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Airdrop Tetris — Mini App (Prototype)</title>
+  <!-- SDK de Farcaster para conectar wallet -->
+  <script src="https://farcaster.xyz/frames/sdk.min.js"></script>
   <style>
     :root{
       --coinbase-blue:#0052FF;
@@ -34,6 +36,22 @@
   </style>
 </head>
 <body>
+  <button onclick="connectWallet()" style="padding:10px 20px; background:#0052FF; color:white; border:none; border-radius:8px; cursor:pointer;">
+    Connect Farcaster Wallet
+  </button>
+
+  <script>
+    async function connectWallet() {
+      try {
+        const fc = await window.frames.init();
+        const account = await fc.wallet.connect();
+        alert(`✅ Wallet conectada: ${account.address}`);
+      } catch (err) {
+        alert('❌ Error al conectar la wallet: ' + err.message);
+      }
+    }
+  </script>
+
   <header>
     <div class="logo">₿</div>
     <div>
